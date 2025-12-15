@@ -1511,6 +1511,11 @@ Set NEW-SESSION to start a separate new session."
     (error "Please update shell-maker to version 0.84.4 or newer"))
   (unless (version<= "0.8.1" acp-package-version)
     (error "Please update acp.el to version 0.8.1 or newer"))
+  (when (boundp 'agent-shell--transcript-file-path-function)
+    (user-error "'agent-shell--transcript-file-path-function is retired.
+
+Please use 'agent-shell-transcript-file-path-function and unbind old
+variable (see makunbound)."))
   (with-temp-buffer ;; client-maker needs a buffer (use a temp one)
     (unless (and (map-elt config :client-maker)
                  (funcall (map-elt config :client-maker) (current-buffer)))
@@ -1562,7 +1567,17 @@ Set NEW-SESSION to start a separate new session."
       (when agent-shell-file-completion-enabled
         (agent-shell-completion-mode +1))
       (agent-shell--setup-modeline)
-      (setq-local agent-shell--transcript-file (agent-shell--init-transcript config)))
+      (setq-local agent-shell--transcript-file (agent-shell--init-transcript config))
+      ;; agent-shell does not support restoring sessions from transcript
+      ;; via shell-maker. Unalias this functionality so it's not
+      ;; misleading to users or appear via M-x.
+      (fmakunbound #'agent-shell-restore-session-from-transcript)
+      (when agent-shell--transcript-file
+        ;; Prefer agent-shell--transcript-file over shell-maker's
+        ;; transcript capabilities. Unalias to hide this in favor
+        ;; of agent-shell's agent-shell--transcript-file usage.
+        (fmakunbound #'agent-shell-save-session-transcript)
+        (setq-local shell-maker-prompt-before-killing-buffer nil)))
     ;; Display buffer if no-focus was nil, respecting agent-shell-display-action
     (unless no-focus
       (agent-shell--display-buffer shell-buffer))
@@ -3921,10 +3936,13 @@ Mark model using CURRENT-MODEL-ID."
 
 ;;; Transcript
 
-(defvar agent-shell--transcript-file-path-function nil
+(defcustom agent-shell-transcript-file-path-function #'agent-shell--default-transcript-file-path
   "Function to generate the full transcript file path.
 Called with no arguments, should return a string path or nil to disable.
-When nil, transcript saving is disabled.")
+When nil, transcript saving is disabled."
+  :type '(choice (const :tag "Disabled" nil)
+                 (function :tag "Custom function"))
+  :group 'agent-shell)
 
 (defun agent-shell--default-transcript-file-path ()
   "Generate a transcript file path in project root.
@@ -3940,7 +3958,7 @@ For example:
 (defun agent-shell--init-transcript (config)
   "Initialize a new transcript file for this buffer using CONFIG.
 Returns the path to the transcript file, or nil if disabled."
-  (when-let* ((path-fn agent-shell--transcript-file-path-function)
+  (when-let* ((path-fn agent-shell-transcript-file-path-function)
               (filepath (condition-case err
                             (funcall path-fn)
                           (error
@@ -3999,10 +4017,22 @@ Includes STATUS, TITLE, KIND, DESCRIPTION, COMMAND, and OUTPUT."
    "\n\n"
    "```"
    "\n"
-   (string-trim (string-trim output)
-                "```" "```")
+   (string-trim output
+                "^```\n?" "```$")
    "\n"
-   "```"))
+   "```"
+   "\n"))
+
+(defun agent-shell-open-transcript ()
+  "Open the transcript file for the current `agent-shell' buffer."
+  (interactive)
+  (unless (derived-mode-p 'agent-shell-mode)
+    (error "Not in an agent-shell buffer"))
+  (unless agent-shell--transcript-file
+    (error "No transcript file available for this buffer"))
+  (unless (file-exists-p agent-shell--transcript-file)
+    (error "Transcript file does not exist: %s" agent-shell--transcript-file))
+  (find-file agent-shell--transcript-file))
 
 ;;; Queueing
 
