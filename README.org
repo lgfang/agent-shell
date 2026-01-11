@@ -23,8 +23,6 @@ A native Emacs shell to interact with LLM agents powered by ACP ([[https://agent
 
 With agent-shell, you can chat with the likes of Gemini CLI, Claude Code, Auggie, Mistral Vibe, or any other ACP-driven agent.
 
-*Note:* This package is in the very early stages and is likely incomplete or may have some rough edges.
-
 * News
 
 - [[https://xenodium.com/agent-shell-0-25-updates][agent-shell 0.25 updates]].
