@@ -87,9 +87,7 @@ For no authentication (when using alternative authentication methods):
   :group 'agent-shell)
 
 (defcustom agent-shell-google-gemini-command
-  '("gemini" "--experimental-acp"
-    "--allowed-tools" "run_shell_command" "list_directory"
-    "read_many_files" "web_fetch" "google_web_search")
+  '("gemini" "--experimental-acp")
   "Command and parameters for the Gemini client.
 
 The first element is the command name, and the rest are command parameters."
