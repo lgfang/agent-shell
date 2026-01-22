@@ -1317,7 +1317,7 @@ Example output:
   "Make diff information from TOOL-CALL.
 
 TOOL-CALL is an ACP tool call object that may contain diff info in
-either `content' (standard ACP format) or `rawInput' (eg. Copilot).
+either `content' (standard ACP format) or `rawInput' (eg.  Copilot).
 
 Standard ACP format uses content with type \"diff\" containing
 oldText/newText/path fields.
@@ -3460,8 +3460,9 @@ CHAR and OPTION are used for cursor sensor messages."
                          'cursor-sensor-functions
                          (list (lambda (_window _old-pos sensor-action)
                                  (when (eq sensor-action 'entered)
-                                   (message "Press RET or %s to %s"
-                                            char option))))
+                                   (if char
+                                       (message "Press RET or %s to %s" char option)
+                                     (message "Press RET to %s" option)))))
                          button))
     button))
 
@@ -3469,12 +3470,19 @@ CHAR and OPTION are used for cursor sensor messages."
   "Make actions from ACP-OPTIONS for shell rendering.
 
 See `agent-shell--make-permission-action' for ACP-OPTION and return schema."
-  (seq-sort (lambda (a b)
-              (< (length (map-elt a :label))
-                 (length (map-elt b :label))))
-            (delq nil (mapcar #'agent-shell--make-permission-action acp-options))))
+  (let (acp-seen-kinds)
+    (seq-sort (lambda (a b)
+                (< (length (map-elt a :label))
+                   (length (map-elt b :label))))
+              (delq nil (mapcar (lambda (acp-option)
+                                  (let ((action (agent-shell--make-permission-action
+                                                 :acp-option acp-option
+                                                 :acp-seen-kinds acp-seen-kinds)))
+                                    (push (map-elt acp-option 'kind) acp-seen-kinds)
+                                    action))
+                                acp-options)))))
 
-(defun agent-shell--make-permission-action (acp-option)
+(cl-defun agent-shell--make-permission-action (&key acp-option acp-seen-kinds)
   "Convert a single ACP-OPTION to an action alist.
 
 ACP-OPTION should be a PermissionOption per ACP spec:
@@ -3486,6 +3494,9 @@ ACP-OPTION should be a PermissionOption per ACP spec:
   ((\='kind . \"allow_once\")
    (\='name . \"Allow\")
    (\='optionId . \"allow\"))
+
+ACP-SEEN-KINDS is a list of kinds already processed.  If kind is in
+ACP-SEEN-KINDS, omit the keybinding to avoid duplicates.
 
 Returns an alist of the form:
 
@@ -3503,10 +3514,11 @@ Returns nil if the ACP-OPTION kind is not recognized."
                                                                                  agent-shell-mode-map t)))
                                            "n"))))
          (kind (map-elt acp-option 'kind))
-         (char (map-elt char-map kind))
+         (char (unless (member kind acp-seen-kinds)
+                 (map-elt char-map kind)))
          (name (map-elt acp-option 'name)))
-    (when char
-      (map-into `((:label . ,(format "%s (%s)" name char))
+    (when (map-elt char-map kind)
+      (map-into `((:label . ,(if char (format "%s (%s)" name char) name))
                   (:option . ,name)
                   (:char . ,char)
                   (:kind . ,kind)
