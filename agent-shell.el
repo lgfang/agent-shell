@@ -174,7 +174,7 @@ See https://github.com/xenodium/agent-shell/issues/119"
   :group 'agent-shell)
 
 (defcustom agent-shell-context-sources '(files region error line)
-  "Sources to consider when determining context.
+  "Sources to consider when determining \\<agent-shell-mode-map>\\[agent-shell] automatic context.
 
 Each element can be:
 - A symbol: `files', `region', `error', or `line'
