@@ -2688,6 +2688,13 @@ normalized server configs."
            (mapcar (lambda (server)
                      (when (functionp server)
                        (setq server (funcall server)))
+                     (when (consp server)
+                       (setq server (mapcar (lambda (obj)
+                                              (cons
+                                               (car obj)
+                                               (if (functionp (cdr obj))
+                                                   (funcall (cdr obj))
+                                                 (cdr obj)))) server)))
                      (let ((normalized (copy-alist server)))
                        (when (map-contains-key normalized 'args)
                          (let ((args (map-elt normalized 'args)))
