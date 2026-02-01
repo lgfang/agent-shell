@@ -2682,7 +2682,9 @@ Must provide ON-SESSION-INIT (lambda ())."
                 :state agent-shell--state :shell shell)))
 
 (defun agent-shell--eval-dynamic-values (obj)
-  "Recursively evaluate any function/lambda values in OBJ."
+  "Recursively evaluate any lambda values in OBJ.
+Named functions (symbols) are not evaluated to avoid accidentally
+calling external symbols."
   (cond
    ((and (functionp obj) (not (symbolp obj))) (agent-shell--eval-dynamic-values (funcall obj)))
    ((consp obj)
