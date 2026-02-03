@@ -32,8 +32,8 @@
 
 (declare-function agent-shell "agent-shell")
 
-;; Worktree root directory
-(defconst agent-shell-worktree--root-directory "~/.agent-shell/worktrees")
+;; Worktree subdirectory within project's .agent-shell folder
+(defconst agent-shell-worktree--subdirectory ".agent-shell/worktrees")
 
 ;; Word lists for generating random worktree names (Docker-style naming)
 (defconst agent-shell-worktree--adjectives
@@ -106,30 +106,23 @@ Or nil if not in a repo."
       (unless (string-empty-p trimmed)
         trimmed))))
 
-(defun agent-shell-worktree--git-repo-name ()
-  "Return the name of the current git repository (parent directory name)."
-  (when-let ((root (agent-shell-worktree--git-repo-root)))
-    (file-name-nondirectory (directory-file-name root))))
-
 ;;;###autoload
 (defun agent-shell-new-worktree-shell ()
   "Create a new git worktree and start an agent shell in it.
 
-The worktree is created at <worktree-root>/<repo-name>/<worktree-name>
-where:
-- <worktree-root> is `agent-shell-worktree--root-directory'
-- <repo-name> is the current repository's directory name
-- <worktree-name> is a randomly generated name (e.g., \"adoring-hawking\")
+The worktree is created at <project-root>/.agent-shell/worktrees/<worktree-name>
+where <worktree-name> is a randomly generated name (e.g., \"adoring-hawking\").
 
 The user is prompted to confirm or edit the worktree path before creation."
   (interactive)
   (unless (agent-shell-worktree--git-repo-root)
     (user-error "Not in a git repository"))
-  (let* ((repo-name (agent-shell-worktree--git-repo-name))
+  (let* ((repo-root (agent-shell-worktree--git-repo-root))
          (worktree-name (agent-shell-worktree--generate-name))
          (default-path (file-name-concat
-                        agent-shell-worktree--root-directory
-                        repo-name worktree-name))
+                        repo-root
+                        agent-shell-worktree--subdirectory
+                        worktree-name))
          (worktree-path (expand-file-name (read-directory-name
                                            "Worktree directory: "
                                            default-path))))
