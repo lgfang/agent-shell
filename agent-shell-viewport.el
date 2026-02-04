@@ -694,6 +694,8 @@ Returns nil if VIEWPORT-BUFFER is not a viewport buffer or shell doesn't exist."
 
 (defvar-local agent-shell-viewport--compose-snapshot nil
   "Alist with :content and :location from compose buffer before viewing history.")
+;; The viewport buffer transitions between major modes which clears
+;; buffer-local vars. Make snapshot permanent-local.
 (put 'agent-shell-viewport--compose-snapshot 'permanent-local t)
 
 (defun agent-shell-viewport--clean-up ()
