@@ -750,10 +750,10 @@ For example, offer to kill associated shell session."
 (defvar agent-shell-viewport-view-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-c") #'agent-shell-viewport-interrupt)
-    (define-key map (kbd "n") #'agent-shell-viewport-next-item)
-    (define-key map (kbd "p") #'agent-shell-viewport-previous-item)
     (define-key map (kbd "TAB") #'agent-shell-viewport-next-item)
     (define-key map (kbd "<backtab>") #'agent-shell-viewport-previous-item)
+    (define-key map (kbd "n") #'agent-shell-viewport-next-item)
+    (define-key map (kbd "p") #'agent-shell-viewport-previous-item)
     (define-key map (kbd "f") #'agent-shell-viewport-next-page)
     (define-key map (kbd "b") #'agent-shell-viewport-previous-page)
     (define-key map (kbd "r") #'agent-shell-viewport-reply)
