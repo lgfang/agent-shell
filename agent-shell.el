@@ -3338,16 +3338,29 @@ Always prompts for file selection, even if a current file is available."
   (interactive)
   (agent-shell-send-file t))
 
-(defun agent-shell-send-screenshot ()
+(defun agent-shell-send-screenshot (&optional pick-shell)
   "Capture a screenshot and insert it into `agent-shell'.
 
 The screenshot is saved to .agent-shell/screenshots in the project root.
-The captured screenshot file path is then inserted into the shell prompt."
+The captured screenshot file path is then inserted into the shell prompt.
+
+When PICK-SHELL is non-nil, prompt for which shell buffer to use."
   (interactive)
   (let* ((screenshots-dir (expand-file-name ".agent-shell/screenshots" (agent-shell-cwd)))
-         (screenshot-path (agent-shell--capture-screenshot :destination-dir screenshots-dir)))
+         (screenshot-path (agent-shell--capture-screenshot :destination-dir screenshots-dir))
+         (shell-buffer (when pick-shell
+                         (completing-read "Send screenshot to shell: "
+                                          (mapcar #'buffer-name (or (agent-shell-buffers)
+                                                                    (user-error "No shells available")))
+                                          nil t))))
     (agent-shell-insert
-     :text (agent-shell--get-files-context :files (list screenshot-path)))))
+     :text (agent-shell--get-files-context :files (list screenshot-path))
+     :shell-buffer shell-buffer)))
+
+(defun agent-shell-send-screenshot-to ()
+  "Like `agent-shell-send-screenshot' but prompt for which shell to use."
+  (interactive)
+  (agent-shell-send-screenshot t))
 
 ;;; Permissions
 
@@ -3835,17 +3848,28 @@ Returns an alist with insertion details or nil otherwise:
     (agent-shell--insert-to-shell-buffer :text text :submit submit
                                          :no-focus no-focus :shell-buffer shell-buffer)))
 
-(cl-defun agent-shell-send-region ()
-  "Send region to last accessed shell buffer in project."
+(cl-defun agent-shell-send-region (&optional pick-shell)
+  "Send region to last accessed shell buffer in project.
+
+When PICK-SHELL is non-nil, prompt for which shell buffer to use."
   (interactive)
-  (agent-shell-insert
-   :text (agent-shell--get-region-context
-          :deactivate t :no-error t
-          :agent-cwd (when-let ((shell-buffer (agent-shell--shell-buffer
-                                               :no-create t
-                                               :no-error t)))
-                       (with-current-buffer shell-buffer
-                         (agent-shell-cwd))))))
+  (let ((shell-buffer (or (when pick-shell
+                            (completing-read "Send region to shell: "
+                                             (mapcar #'buffer-name (or (agent-shell-buffers)
+                                                                       (user-error "No shells available")))
+                                             nil t))
+                          (agent-shell--shell-buffer))))
+    (agent-shell-insert
+     :text (agent-shell--get-region-context
+            :deactivate t :no-error t
+            :agent-cwd (with-current-buffer shell-buffer
+                         (agent-shell-cwd)))
+     :shell-buffer shell-buffer)))
+
+(defun agent-shell-send-region-to ()
+  "Like `agent-shell-send-region' but prompt for which shell to use."
+  (interactive)
+  (agent-shell-send-region t))
 
 (cl-defun agent-shell-send-dwim ()
   "Send region or error at point to last accessed shell buffer in project."
