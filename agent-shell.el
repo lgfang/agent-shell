@@ -3124,7 +3124,8 @@ If FILE-PATH is not an image, returns nil."
                        (agent-shell--update-fragment
                         :state (agent-shell--state)
                         :block-id (format "%s-usage" (map-elt (agent-shell--state) :request-count))
-                        :body (agent-shell--format-usage-box (map-elt (agent-shell--state) :usage))
+                        :label-left (propertize "Usage" 'font-lock-face 'font-lock-doc-markup-face)
+                        :body (agent-shell--format-usage (map-elt (agent-shell--state) :usage) t)
                         :create-new t))
                      (unless success
                        (agent-shell--update-fragment

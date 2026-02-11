@@ -102,38 +102,46 @@ Checks if any token counts or context size are non-zero."
   (or (> (or (map-elt usage :total-tokens) 0) 0)
       (> (or (map-elt usage :context-size) 0) 0)))
 
-(defun agent-shell--format-usage-box (usage)
-  "Format USAGE information as a box display.
-Returns a string with box-drawing characters showing tokens, context, and cost."
-  (let* ((content (agent-shell--format-usage usage))
-         (content-width (length content))
-         (title "Usage")
-         ;; Top line: "╭─ Usage " + dashes + "╮"
-         ;; Content line: "│ " + content + " │"
-         ;; Bottom line: "╰" + dashes + "╯"
-         ;; All lines should have the same total width
-         (inner-width content-width)  ; width between the borders
-         (top-line (concat "╭─ " title " " (make-string (- inner-width (length title) 1) ?─) "╮")))
-    (concat top-line "\n"
-            "│ " content " │\n"
-            "╰" (make-string (+ inner-width 2) ?─) "╯")))
-
 (defun agent-shell-show-usage ()
   "Display current session usage information in the minibuffer.
 This is a stub UI function for testing usage tracking before implementing
 a more polished presentation method."
   (interactive)
-  (if (not (derived-mode-p 'agent-shell-mode))
-      (message "Not in an agent-shell buffer")
-    (message "%s" (agent-shell--format-usage (map-elt agent-shell--state :usage)))))
+  (unless (derived-mode-p 'agent-shell-mode)
+    (error "Not in an agent-shell buffer"))
+  (unless (agent-shell--usage-has-data-p (map-elt agent-shell--state :usage))
+    (error "Usage not available"))
+  (message "\n%s\n" (agent-shell--format-usage (map-elt agent-shell--state :usage) t)))
 
-(defun agent-shell--format-usage (usage)
+(defun agent-shell--format-usage (usage &optional multiline)
   "Format USAGE data as a display string.
-USAGE should be an alist/plist with keys for token counts, context, and cost."
-  (format "Context: %s/%s%s | Usage: %s total tokens (%s in, %s out%s%s%s) | Cost: %s%s"
+USAGE should be an alist/plist with keys for token counts, context, and cost.
+When MULTILINE is non-nil, format as right-aligned labeled rows."
+  (let ((tokens
+         (string-join
+          (delq nil
+                (list
+                 (when (> (or (map-elt usage :input-tokens) 0) 0)
+                   (format "%s in" (agent-shell--format-number-compact
+                                    (map-elt usage :input-tokens))))
+                 (when (> (or (map-elt usage :output-tokens) 0) 0)
+                   (format "%s out" (agent-shell--format-number-compact
+                                     (map-elt usage :output-tokens))))
+                 (when (and (map-elt usage :thought-tokens)
+                            (> (map-elt usage :thought-tokens) 0))
+                   (format "%s thought" (agent-shell--format-number-compact
+                                         (map-elt usage :thought-tokens))))
+                 (when (and (map-elt usage :cached-read-tokens)
+                            (> (map-elt usage :cached-read-tokens) 0))
+                   (format "%s cached" (agent-shell--format-number-compact
+                                        (map-elt usage :cached-read-tokens))))))
+          " · "))
+        (context
+         (concat
           (if (> (or (map-elt usage :context-used) 0) 0)
               (agent-shell--format-number-compact (or (map-elt usage :context-used) 0))
             "0")
+          "/"
           (if (> (or (map-elt usage :context-size) 0) 0)
               (agent-shell--format-number-compact (or (map-elt usage :context-size) 0))
             "?")
@@ -141,31 +149,47 @@ USAGE should be an alist/plist with keys for token counts, context, and cost."
                    (> (map-elt usage :context-size) 0))
               (format " (%.1f%%)" (* 100.0 (/ (float (or (map-elt usage :context-used) 0))
                                               (map-elt usage :context-size))))
-            "")
-          (if (> (or (map-elt usage :total-tokens) 0) 0)
-              (agent-shell--format-number-compact (or (map-elt usage :total-tokens) 0))
-            "0")
-          (if (> (or (map-elt usage :input-tokens) 0) 0)
-              (agent-shell--format-number-compact (or (map-elt usage :input-tokens) 0))
-            "0")
-          (if (> (or (map-elt usage :output-tokens) 0) 0)
-              (agent-shell--format-number-compact (or (map-elt usage :output-tokens) 0))
-            "0")
-          (if (and (map-elt usage :thought-tokens) (> (map-elt usage :thought-tokens) 0))
-              (format ", %s thought" (agent-shell--format-number-compact (map-elt usage :thought-tokens)))
-            "")
-          (if (and (map-elt usage :cached-read-tokens) (> (map-elt usage :cached-read-tokens) 0))
-              (format ", %s cached-read" (agent-shell--format-number-compact (map-elt usage :cached-read-tokens)))
-            "")
-          (if (and (map-elt usage :cached-write-tokens) (> (map-elt usage :cached-write-tokens) 0))
-              (format ", %s cached-write" (agent-shell--format-number-compact (map-elt usage :cached-write-tokens)))
-            "")
+            "")))
+        (total
+         (let ((n (or (map-elt usage :total-tokens) 0)))
+           (if (> n 0)
+               (format " (%s total)" (agent-shell--format-number-compact n))
+             "")))
+        (cost
+         (concat
           (if (map-elt usage :cost-currency)
-              (format "%s " (map-elt usage :cost-currency))
+              (map-elt usage :cost-currency)
             "$")
           (if (and (map-elt usage :cost-amount) (> (map-elt usage :cost-amount) 0))
               (format "%.2f" (map-elt usage :cost-amount))
-            "0.00")))
+            "0.00"))))
+    (if multiline
+        (concat
+         (propertize " Context: "
+                     'face 'font-lock-comment-face
+                     'font-lock-face 'font-lock-comment-face)
+         context "\n"
+         (propertize "  Tokens: "
+                     'face 'font-lock-comment-face
+                     'font-lock-face 'font-lock-comment-face)
+         tokens total "\n"
+         (propertize "    Cost: "
+                     'face 'font-lock-comment-face
+                     'font-lock-face 'font-lock-comment-face)
+         cost)
+      (concat
+       (propertize "Context: "
+                   'face 'font-lock-comment-face
+                   'font-lock-face 'font-lock-comment-face)
+       context " "
+       (propertize "Tokens: "
+                   'face 'font-lock-comment-face
+                   'font-lock-face 'font-lock-comment-face)
+       tokens total " "
+       (propertize "Cost: "
+                   'face 'font-lock-comment-face
+                   'font-lock-face 'font-lock-comment-face)
+       cost))))
 
 (defun agent-shell--context-usage-indicator ()
   "Return a single character indicating context usage percentage.
@@ -188,14 +212,9 @@ Only returns an indicator if enabled and usage data is available."
                        ((>= percentage 37.5) "▃")
                        ((>= percentage 25) "▂")
                        ((> percentage 0) "▁")
-                       (t nil)))  ; Return nil for no usage
-           (face (cond
-                  ((>= percentage 90) 'error)         ; Red for critical
-                  ((>= percentage 75) 'warning)       ; Yellow/orange for warning
-                  (t 'success))))                     ; Green for normal
+                       (t nil))))  ; Return nil for no usage
       (when indicator
         (propertize indicator
-                    'face face
                     'help-echo (agent-shell--format-usage usage))))))
 
 (provide 'agent-shell-usage)
