@@ -307,6 +307,36 @@ Assume screenshot file path will be appended to this list."
   :type '(repeat string)
   :group 'agent-shell)
 
+(defcustom agent-shell-clipboard-image-handlers
+  (list
+   (list (cons :command "pngpaste")
+         (cons :save (lambda (file-path)
+                       (let ((exit-code (call-process "pngpaste" nil nil nil file-path)))
+                         (unless (zerop exit-code)
+                           (error "pngpaste failed with exit code %d" exit-code))))))
+   (list (cons :command "xclip")
+         (cons :save (lambda (file-path)
+                       (with-temp-buffer
+                         (set-buffer-multibyte nil)
+                         (let ((exit-code (call-process "xclip" nil t nil
+                                                        "-selection" "clipboard"
+                                                        "-t" "image/png" "-o")))
+                           (unless (zerop exit-code)
+                             (error "xclip failed with exit code %d" exit-code))
+                           (write-region (point-min) (point-max) file-path nil 'silent)))))))
+  "Handlers for saving clipboard images to a file.
+
+Each handler is an alist with the following keys:
+
+  :command  The executable name to look up via `executable-find'.
+  :save     A function taking FILE-PATH that saves the clipboard
+            image there, signaling an error on failure.
+
+Handlers are tried in order.  The first whose :command is found
+on the system is used."
+  :type '(repeat (alist :key-type symbol :value-type sexp))
+  :group 'agent-shell)
+
 (defcustom agent-shell-buffer-name-format 'default
   "Format to use when generating agent shell buffer names.
 
@@ -1822,6 +1852,35 @@ DESTINATION-DIR is required and must be provided."
         (error "Screenshot file is empty"))
        (t
         file-path)))))
+
+(cl-defun agent-shell--save-clipboard-image (&key destination-dir)
+  "Save clipboard image to DESTINATION-DIR.
+Returns the full path to the saved image file on success."
+  (unless destination-dir
+    (error "Destination-dir is required"))
+  (let* ((file-path (expand-file-name
+                     (format "clipboard-%s.png"
+                             (format-time-string "%Y%m%d-%H%M%S"))
+                     destination-dir))
+         (handler (seq-find
+                   (lambda (h)
+                     (executable-find (map-elt h :command)))
+                   agent-shell-clipboard-image-handlers)))
+    (unless handler
+      (error "No clipboard image utility found (tried: %s)"
+             (mapconcat (lambda (h) (map-elt h :command))
+                        agent-shell-clipboard-image-handlers ", ")))
+    (unless (file-directory-p destination-dir)
+      (make-directory destination-dir t))
+    (funcall (map-elt handler :save) file-path)
+    (cond
+     ((not (file-exists-p file-path))
+      (error "Clipboard image file was not created"))
+     ((zerop (nth 7 (file-attributes file-path)))
+      (delete-file file-path)
+      (error "No image found in clipboard"))
+     (t
+      file-path))))
 
 (defun agent-shell--status-label (status)
   "Convert STATUS codes to user-visible labels."
@@ -3581,6 +3640,30 @@ When PICK-SHELL is non-nil, prompt for which shell buffer to use."
   "Like `agent-shell-send-screenshot' but prompt for which shell to use."
   (interactive)
   (agent-shell-send-screenshot t))
+
+(defun agent-shell-send-clipboard-image (&optional pick-shell)
+  "Paste clipboard image and insert it into `agent-shell'.
+
+The image is saved to .agent-shell/screenshots in the project root.
+The saved image file path is then inserted into the shell prompt.
+
+When PICK-SHELL is non-nil, prompt for which shell buffer to use."
+  (interactive)
+  (let* ((screenshots-dir (expand-file-name ".agent-shell/screenshots" (agent-shell-cwd)))
+         (image-path (agent-shell--save-clipboard-image :destination-dir screenshots-dir))
+         (shell-buffer (when pick-shell
+                         (completing-read "Send image to shell: "
+                                          (mapcar #'buffer-name (or (agent-shell-buffers)
+                                                                    (user-error "No shells available")))
+                                          nil t))))
+    (agent-shell-insert
+     :text (agent-shell--get-files-context :files (list image-path))
+     :shell-buffer shell-buffer)))
+
+(defun agent-shell-send-clipboard-image-to ()
+  "Like `agent-shell-send-clipboard-image' but prompt for which shell to use."
+  (interactive)
+  (agent-shell-send-clipboard-image t))
 
 ;;; Permissions
 
