@@ -445,7 +445,7 @@ configuration alist for backwards compatibility."
                         :key-type symbol :value-type sexp))
   :group 'agent-shell)
 
-(defcustom agent-shell-session-load-strategy 'latest
+(defcustom agent-shell-session-load-strategy 'new
   "How to choose an existing session.
 
 Only possible if either `session/list' or `session/load' are available.
