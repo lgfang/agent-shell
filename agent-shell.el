@@ -3197,23 +3197,32 @@ for the current year, or \"Mon DD, YYYY\" for other years."
           (format-time-string "%b %d, %Y" time))))
     (error iso-timestamp)))
 
-(defun agent-shell--session-choice-label (acp-session)
-  "Return completion label for ACP-SESSION."
-  (let* ((cwd (or (map-elt acp-session 'cwd) ""))
-         (dir (propertize (file-name-nondirectory (directory-file-name cwd))
-                          'face 'font-lock-keyword-face))
-         (dir-padding (make-string (max 2 (- 22 (length (file-name-nondirectory (directory-file-name cwd))))) ?\s))
-         (title (or (map-elt acp-session 'title)
-                    "Untitled"))
-         (title (if (> (length title) 50)
-                    (concat (substring title 0 47) "...")
-                  title))
+(defun agent-shell--session-dir-name (acp-session)
+  "Return directory name for ACP-SESSION."
+  (file-name-nondirectory
+   (directory-file-name (or (map-elt acp-session 'cwd) ""))))
+
+(defun agent-shell--session-title (acp-session)
+  "Return display title for ACP-SESSION, truncated to 50 chars."
+  (let ((title (or (map-elt acp-session 'title) "Untitled")))
+    (if (> (length title) 50)
+        (concat (substring title 0 47) "...")
+      title)))
+
+(defun agent-shell--session-choice-label (acp-session max-dir-width max-title-width)
+  "Return completion label for ACP-SESSION.
+MAX-DIR-WIDTH is the column width for the directory name.
+MAX-TITLE-WIDTH is the column width for the title."
+  (let* ((dir-name (agent-shell--session-dir-name acp-session))
+         (dir (propertize dir-name 'face 'font-lock-keyword-face))
+         (dir-padding (make-string (max 2 (- max-dir-width (length dir-name))) ?\s))
+         (title (agent-shell--session-title acp-session))
          (updated-at (or (map-elt acp-session 'updatedAt)
                          (map-elt acp-session 'createdAt)
                          "unknown-time"))
          (date-str (propertize (agent-shell--format-session-date updated-at)
                                'face 'font-lock-comment-face))
-         (padding (make-string (max 2 (- 52 (length title))) ?\s)))
+         (padding (make-string (max 2 (- max-title-width (length title))) ?\s)))
     (concat dir dir-padding title padding date-str)))
 
 (defun agent-shell--prompt-select-session (acp-sessions)
@@ -3224,10 +3233,16 @@ Falls back to latest session in batch mode (e.g. tests)."
   (when acp-sessions
     (if noninteractive
         (car acp-sessions)
-    (let* ((new-session-choice "Start a new session")
+    (let* ((max-dir-width (apply #'max (mapcar (lambda (s)
+                                                (length (agent-shell--session-dir-name s)))
+                                              acp-sessions)))
+           (max-title-width (apply #'max (mapcar (lambda (s)
+                                                   (length (agent-shell--session-title s)))
+                                                 acp-sessions)))
+           (new-session-choice "Start a new session")
            (choices (cons (cons new-session-choice nil)
                           (mapcar (lambda (acp-session)
-                                    (cons (agent-shell--session-choice-label acp-session)
+                                    (cons (agent-shell--session-choice-label acp-session max-dir-width max-title-width)
                                           acp-session))
                                   acp-sessions)))
            (candidates (mapcar #'car choices))
