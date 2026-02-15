@@ -650,22 +650,34 @@ handles viewport mode detection, existing shell reuse, and project context."
                (or (derived-mode-p 'agent-shell-viewport-view-mode)
                    (derived-mode-p 'agent-shell-viewport-edit-mode)))
           (agent-shell-toggle)
-        (agent-shell-viewport--show-buffer
-         :shell-buffer (cond (switch-to-shell
-                              (completing-read "Switch to shell: "
-                                               (mapcar #'buffer-name (or (agent-shell-buffers)
-                                                                         (user-error "No shells available")))
-                                               nil t))
-                             (new-shell
-                              (agent-shell--start :config (or config
-                                                              (agent-shell--resolve-preferred-config)
-                                                              (agent-shell-select-config
-                                                               :prompt "Start new agent: ")
-                                                              (error "No agent config found"))
-                                                  :no-focus t
-                                                  :new-session t))
-                             (t
-                              (agent-shell--shell-buffer)))))
+        (let ((shell-buffer
+               (cond (switch-to-shell
+                      (completing-read "Switch to shell: "
+                                       (mapcar #'buffer-name (or (agent-shell-buffers)
+                                                                 (user-error "No shells available")))
+                                       nil t))
+                     (new-shell
+                      (agent-shell--start :config (or config
+                                                      (agent-shell--resolve-preferred-config)
+                                                      (agent-shell-select-config
+                                                       :prompt "Start new agent: ")
+                                                      (error "No agent config found"))
+                                          :no-focus t
+                                          :new-session t))
+                     (t
+                      (agent-shell--shell-buffer)))))
+          (if (and new-shell
+                   (not agent-shell-deferred-initialization)
+                   (eq agent-shell-session-load-strategy 'prompt))
+              ;; Defer viewport display until session is selected.
+              (agent-shell-subscribe-to
+               :shell-buffer shell-buffer
+               :event 'session-selected
+               :on-event (lambda (_event)
+                           (agent-shell-viewport--show-buffer
+                            :shell-buffer shell-buffer)))
+            (agent-shell-viewport--show-buffer
+             :shell-buffer shell-buffer))))
     (cond (switch-to-shell
            (let* ((shell-buffer
                    (completing-read "Switch to shell: "
@@ -2188,6 +2200,30 @@ variable (see makunbound)"))
            :success nil)
         ;; Kick off ACP session bootstrapping.
         (agent-shell--handle :shell-buffer shell-buffer)))
+    ;; Subscribe to session selection events (needed regardless of focus).
+    (when (and (not agent-shell-deferred-initialization)
+               (eq agent-shell-session-load-strategy 'prompt))
+      (agent-shell-subscribe-to
+       :shell-buffer shell-buffer
+       :event 'session-selection-cancelled
+       :on-event (lambda (_event)
+                   (kill-buffer shell-buffer)))
+      (let ((active-message (agent-shell-active-message-show :text "Loading...")))
+        (agent-shell-subscribe-to
+         :shell-buffer shell-buffer
+         :event 'session-prompt
+         :on-event (lambda (_event)
+                     (agent-shell-active-message-hide :active-message active-message)))
+        (agent-shell-subscribe-to
+         :shell-buffer shell-buffer
+         :event 'session-selected
+         :on-event (lambda (_event)
+                     (agent-shell-active-message-hide :active-message active-message)))
+        (agent-shell-subscribe-to
+         :shell-buffer shell-buffer
+         :event 'session-selection-cancelled
+         :on-event (lambda (_event)
+                     (agent-shell-active-message-hide :active-message active-message)))))
     ;; Display buffer if no-focus was nil, respecting agent-shell-display-action
     (unless no-focus
       (if (and (not agent-shell-deferred-initialization)
@@ -2197,24 +2233,11 @@ variable (see makunbound)"))
           ;; and soon after that prompt the user for input.
           ;; Better to prompt the user for input and then
           ;; display the buffer.
-          (let ((active-message (agent-shell-active-message-show :text "Loading...")))
-            (agent-shell-subscribe-to
-             :shell-buffer shell-buffer
-             :event 'session-prompt
-             :on-event (lambda (_event)
-                         (agent-shell-active-message-hide :active-message active-message)))
-            (agent-shell-subscribe-to
-             :shell-buffer shell-buffer
-             :event 'session-selected
-             :on-event (lambda (_event)
-                         (agent-shell-active-message-hide :active-message active-message)
-                         (agent-shell--display-buffer shell-buffer)))
-            (agent-shell-subscribe-to
-             :shell-buffer shell-buffer
-             :event 'session-selection-cancelled
-             :on-event (lambda (_event)
-                         (agent-shell-active-message-hide :active-message active-message)
-                         (kill-buffer shell-buffer))))
+          (agent-shell-subscribe-to
+           :shell-buffer shell-buffer
+           :event 'session-selected
+           :on-event (lambda (_event)
+                       (agent-shell--display-buffer shell-buffer)))
         (agent-shell--display-buffer shell-buffer)))
     shell-buffer))
 
