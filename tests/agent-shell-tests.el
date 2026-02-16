@@ -977,6 +977,29 @@ code block content with spaces
       ;; Should not error when no subscriptions exist
       (agent-shell--emit-event :event 'init-client))))
 
+(ert-deftest agent-shell-subscribe-to-prompt-ready-test ()
+  "Test subscribing to `prompt-ready' event."
+  (let* ((received-events nil)
+         (agent-shell--state (list (cons :buffer (current-buffer))
+                                   (cons :event-subscriptions nil))))
+    (cl-letf (((symbol-function 'agent-shell--state)
+               (lambda () agent-shell--state)))
+      (agent-shell-subscribe-to
+       :shell-buffer (current-buffer)
+       :event 'prompt-ready
+       :on-event (lambda (event)
+                   (push event received-events)))
+
+      ;; Other events should not be received.
+      (agent-shell--emit-event :event 'init-session)
+      (agent-shell--emit-event :event 'init-finished)
+      (should (= (length received-events) 0))
+
+      ;; prompt-ready should be received.
+      (agent-shell--emit-event :event 'prompt-ready)
+      (should (= (length received-events) 1))
+      (should (equal (map-elt (nth 0 received-events) :event) 'prompt-ready)))))
+
 (ert-deftest agent-shell--initiate-session-prefers-list-and-load-when-supported ()
   "Test `agent-shell--initiate-session' prefers session/list + session/load."
   (with-temp-buffer

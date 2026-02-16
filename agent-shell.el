@@ -1003,7 +1003,8 @@ Flow:
                                                   (funcall (map-nested-elt (agent-shell--state)
                                                                            '(:agent-config :default-session-mode-id))))))
                                  (shell-maker-finish-output :config shell-maker--config
-                                                            :success nil))
+                                                            :success nil)
+                                 (agent-shell--emit-event :event 'prompt-ready))
                                (agent-shell--handle :command command :shell-buffer shell-buffer))))
           ;; Send ACP request to set default model (optional)
           ((and (map-nested-elt (agent-shell--state) '(:agent-config :default-model-id))
@@ -2958,6 +2959,7 @@ Initialization events (emitted in order):
     :data contains :session-id (nil when starting new)
   `session-selection-cancelled' - User cancelled session selection
   `init-finished'       - Initialization pipeline completed
+  `prompt-ready'        - Shell prompt displayed and ready for input
 
 Session events:
   `tool-call-update'    - Tool call started or updated
@@ -4646,35 +4648,47 @@ Returns an alist with insertion details or nil otherwise:
   (unless text
     (user-error "No text provided to insert"))
   (let* ((shell-buffer (or shell-buffer
-                           (agent-shell--shell-buffer :no-create t)))
-         (inhibit-read-only t)
-         ;; Displaying before with-current-buffer below
-         ;; ensures window is selected, thus window-point
-         ;; is also updated after insertion.
-         (insert-start (if no-focus
-                           (with-current-buffer shell-buffer
-                             (point-max))
-                         (agent-shell--display-buffer shell-buffer)
-                         (point-max)))
-         (insert-end nil))
-    (with-current-buffer shell-buffer
-      (when (shell-maker-busy)
-        (user-error "Busy, try later"))
-      (save-excursion
-        (save-restriction
-          (goto-char insert-start)
-          (unless submit
-            (insert "\n\n"))
-          (insert text)
-          (setq insert-end (point))
-          (narrow-to-region insert-start insert-end)
-          (let ((markdown-overlays-highlight-blocks agent-shell-highlight-blocks))
-            (markdown-overlays-put))))
-      (when submit
-        (shell-maker-submit)))
-    `((:buffer . ,shell-buffer)
-      (:start . ,insert-start)
-      (:end . ,insert-end))))
+                           (agent-shell--shell-buffer :no-create t))))
+    (if (with-current-buffer shell-buffer
+          (map-nested-elt agent-shell--state '(:session :id)))
+        ;; Displaying before with-current-buffer below
+        ;; ensures window is selected, thus window-point
+        ;; is also updated after insertion.
+        (let* ((inhibit-read-only t)
+               (insert-start (if no-focus
+                                 (with-current-buffer shell-buffer
+                                   (point-max))
+                               (agent-shell--display-buffer shell-buffer)
+                               (point-max)))
+               (insert-end nil))
+          (with-current-buffer shell-buffer
+            (when (shell-maker-busy)
+              (user-error "Busy, try later"))
+            (save-excursion
+              (save-restriction
+                (goto-char insert-start)
+                (unless submit
+                  (insert "\n\n"))
+                (insert text)
+                (setq insert-end (point))
+                (narrow-to-region insert-start insert-end)
+                (let ((markdown-overlays-highlight-blocks agent-shell-highlight-blocks))
+                  (markdown-overlays-put))))
+            (when submit
+              (shell-maker-submit)))
+          `((:buffer . ,shell-buffer)
+            (:start . ,insert-start)
+            (:end . ,insert-end)))
+      (let ((token nil))
+        (setq token
+              (agent-shell-subscribe-to
+               :shell-buffer shell-buffer
+               :event 'prompt-ready
+               :on-event (lambda (_event)
+                           (agent-shell-unsubscribe :subscription token)
+                           (agent-shell--insert-to-shell-buffer
+                            :text text :submit submit
+                            :no-focus no-focus :shell-buffer shell-buffer))))))))
 
 (cl-defun agent-shell-insert (&key text submit no-focus shell-buffer)
   "Insert TEXT into the agent shell at `point-max'.
