@@ -1942,7 +1942,11 @@ When NO-ERROR is non-nil, return nil instead of signaling errors."
      (t
       (unless (file-directory-p destination-dir)
         (make-directory destination-dir t))
-      (funcall (map-elt handler :save) file-path)
+      (condition-case err
+          (funcall (map-elt handler :save) file-path)
+        (error
+         (unless no-error
+           (signal (car err) (cdr err)))))
       (cond
        ((not (file-exists-p file-path))
         (unless no-error
